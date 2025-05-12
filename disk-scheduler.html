@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Disk Scheduling Visualizer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f2f2f2;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    form {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    #output {
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 10px;
+      background: #fff;
+      border-radius: 10px;
+    }
+    canvas {
+      max-width: 600px;
+      margin: 20px auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h1>Disk Scheduling Algorithm Visualizer</h1>
+  <form id="scheduler-form">
+    <label>Disk Requests (comma-separated):</label>
+    <input type="text" id="requests" placeholder="e.g. 82,170,43" />
+
+    <label>Initial Head Position:</label>
+    <input type="number" id="head" />
+
+    <label>Select Algorithm:</label>
+    <select id="algorithm">
+      <option value="fcfs">FCFS</option>
+      <option value="sstf">SSTF</option>
+      <option value="scan">SCAN</option>
+      <option value="look">LOOK</option>
+      <option value="cscan">C-SCAN</option>
+      <option value="clook">C-LOOK</option>
+    </select>
+
+    <button type="submit">Visualize</button>
+  </form>
+
+  <div id="output"></div>
+  <canvas id="chart"></canvas>
+
+  <script>
+    function fcfs(requests, head) {
+      let sequence = [head];
+      let seekTime = 0;
+
+      for (let req of requests) {
+        seekTime += Math.abs(head - req);
+        head = req;
+        sequence.push(req);
+      }
+
+      return { sequence, seekTime };
+    }
+
+    function sstf(requests, head) {
+      let sequence = [head];
+      let seekTime = 0;
+      requests = [...requests];
+
+      while (requests.length > 0) {
+        let closest = requests.reduce((prev, curr) =>
+          Math.abs(curr - head) < Math.abs(prev - head) ? curr : prev
+        );
+        seekTime += Math.abs(head - closest);
+        head = closest;
+        sequence.push(closest);
+        requests.splice(requests.indexOf(closest), 1);
+      }
+      return { sequence, seekTime };
+    }
+
+    function scan(requests, head, direction = "right", diskSize = 200) {
+      let sequence = [head];
+      let seekTime = 0;
+      let left = requests.filter(r => r < head).sort((a,b) => a - b);
+      let right = requests.filter(r => r >= head).sort((a,b) => a - b);
+
+      if (direction === "right") {
+        for (let r of right) {
+          seekTime += Math.abs(head - r);
+          head = r;
+          sequence.push(r);
+        }
+        if (head !== diskSize - 1) {
+          seekTime += Math.abs(head - (diskSize - 1));
+          head = diskSize - 1;
+          sequence.push(head);
+        }
+        for (let i = left.length - 1; i >= 0; i--) {
+          seekTime += Math.abs(head - left[i]);
+          head = left[i];
+          sequence.push(head);
+        }
+      }
+      return { sequence, seekTime };
+    }
+
+    function look(requests, head, direction = "right") {
+      let sequence = [head];
+      let seekTime = 0;
+      let left = requests.filter(r => r < head).sort((a,b) => a - b);
+      let right = requests.filter(r => r >= head).sort((a,b) => a - b);
+
+      if (direction === "right") {
+        for (let r of right) {
+          seekTime += Math.abs(head - r);
+          head = r;
+          sequence.push(r);
+        }
+        for (let i = left.length - 1; i >= 0; i--) {
+          seekTime += Math.abs(head - left[i]);
+          head = left[i];
+          sequence.push(head);
+        }
+      }
+      return { sequence, seekTime };
+    }
+
+    function cscan(requests, head, diskSize = 200) {
+      let sequence = [head];
+      let seekTime = 0;
+      let left = requests.filter(r => r < head).sort((a,b) => a - b);
+      let right = requests.filter(r => r >= head).sort((a,b) => a - b);
+
+      for (let r of right) {
+        seekTime += Math.abs(head - r);
+        head = r;
+        sequence.push(r);
+      }
+      seekTime += Math.abs(head - (diskSize - 1));
+      head = 0;
+      sequence.push(diskSize - 1);
+      sequence.push(head);
+
+      for (let r of left) {
+        seekTime += Math.abs(head - r);
+        head = r;
+        sequence.push(r);
+      }
+      return { sequence, seekTime };
+    }
+
+    function clook(requests, head) {
+      let sequence = [head];
+      let seekTime = 0;
+      let left = requests.filter(r => r < head).sort((a,b) => a - b);
+      let right = requests.filter(r => r >= head).sort((a,b) => a - b);
+
+      for (let r of right) {
+        seekTime += Math.abs(head - r);
+        head = r;
+        sequence.push(r);
+      }
+      if (left.length > 0) {
+        seekTime += Math.abs(head - left[0]);
+        head = left[0];
+        sequence.push(head);
+      }
+      for (let i = 1; i < left.length; i++) {
+        seekTime += Math.abs(head - left[i]);
+        head = left[i];
+        sequence.push(r);
+      }
+      return { sequence, seekTime };
+    }
+
+    document.getElementById("scheduler-form").addEventListener("submit", function(e) {
+      e.preventDefault();
+
+      const rawReq = document.getElementById("requests").value;
+      const requests = rawReq.split(",").map(Number).filter(n => !isNaN(n));
+      const head = parseInt(document.getElementById("head").value);
+      const algo = document.getElementById("algorithm").value;
+
+      let result;
+      if (algo === "fcfs") result = fcfs(requests, head);
+      else if (algo === "sstf") result = sstf(requests, head);
+      else if (algo === "scan") result = scan(requests, head);
+      else if (algo === "look") result = look(requests, head);
+      else if (algo === "cscan") result = cscan(requests, head);
+      else if (algo === "clook") result = clook(requests, head);
+
+      document.getElementById("output").innerHTML =
+        `<strong>Total Seek Time:</strong> ${result.seekTime}`;
+
+      new Chart(document.getElementById("chart"), {
+        type: 'line',
+        data: {
+          labels: result.sequence.map((_, i) => i),
+          datasets: [{
+            label: 'Head Movement',
+            data: result.sequence,
+            borderColor: 'blue',
+            fill: false,
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Cylinder Number'
+              }
+            }
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>
